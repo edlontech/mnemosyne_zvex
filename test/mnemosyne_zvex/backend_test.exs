@@ -40,9 +40,56 @@ defmodule MnemosyneZvex.BackendTest do
     end
   end
 
-  describe "get_nodes_by_type/2 (uses sidecar type index, populated by write callbacks)" do
-    test "returns [] when type index is empty", %{state: state} do
+  describe "get_nodes_by_type/2 (Zvex-side filter query)" do
+    test "returns [] when the collection is empty", %{state: state} do
       assert {:ok, [], ^state} = Backend.get_nodes_by_type([:semantic], state)
+    end
+
+    test "filters out other node types", %{state: state} do
+      alias Mnemosyne.Graph.Changeset
+
+      cs =
+        Changeset.new()
+        |> Changeset.add_node(sem("s1"))
+        |> Changeset.add_node(sem("s2"))
+        |> Changeset.add_node(proc("p1"))
+        |> Changeset.add_node(tag("t1"))
+
+      {:ok, state} = Backend.apply_changeset(cs, state)
+
+      assert {:ok, semantics, _} = Backend.get_nodes_by_type([:semantic], state)
+      assert Enum.map(semantics, & &1.id) |> Enum.sort() == ["s1", "s2"]
+
+      assert {:ok, procs, _} = Backend.get_nodes_by_type([:procedural], state)
+      assert Enum.map(procs, & &1.id) == ["p1"]
+    end
+
+    test "returns embedding-less nodes (tags) too", %{state: state} do
+      alias Mnemosyne.Graph.Changeset
+
+      cs =
+        Changeset.new()
+        |> Changeset.add_node(tag("t1"))
+        |> Changeset.add_node(tag("t2"))
+
+      {:ok, state} = Backend.apply_changeset(cs, state)
+
+      assert {:ok, tags, _} = Backend.get_nodes_by_type([:tag], state)
+      assert Enum.map(tags, & &1.id) |> Enum.sort() == ["t1", "t2"]
+    end
+
+    test "dedupes across requested types", %{state: state} do
+      alias Mnemosyne.Graph.Changeset
+
+      cs =
+        Changeset.new()
+        |> Changeset.add_node(sem("s1"))
+        |> Changeset.add_node(proc("p1"))
+
+      {:ok, state} = Backend.apply_changeset(cs, state)
+
+      assert {:ok, all, _} = Backend.get_nodes_by_type([:semantic, :procedural], state)
+      assert Enum.map(all, & &1.id) |> Enum.sort() == ["p1", "s1"]
     end
   end
 

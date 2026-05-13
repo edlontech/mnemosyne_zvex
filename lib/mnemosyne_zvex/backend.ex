@@ -27,6 +27,9 @@ defmodule MnemosyneZvex.Backend do
   alias MnemosyneZvex.Sidecar
   alias MnemosyneZvex.Telemetry, as: T
   alias Zvex.Collection
+  alias Zvex.Collection.Stats
+  alias Zvex.Query
+  alias Zvex.Vector
 
   defstruct [
     :collection,
@@ -95,7 +98,6 @@ defmodule MnemosyneZvex.Backend do
         docs = Encoding.encode_many(cs.additions, state.dimension)
 
         with :ok <- upsert_docs(state.collection, docs),
-             :ok <- index_additions(state.sidecar, cs.additions),
              :ok <- Sidecar.put_links_batch(state.sidecar, cs.links),
              :ok <- Sidecar.put_metadata_many(state.sidecar, cs.metadata),
              :ok <- Sidecar.sync(state.sidecar) do
@@ -194,20 +196,58 @@ defmodule MnemosyneZvex.Backend do
   end
 
   @impl true
-  def get_nodes_by_type(node_types, %__MODULE__{} = state) do
-    ids =
-      node_types
-      |> Enum.flat_map(&MapSet.to_list(Sidecar.ids_of_type(state.sidecar, &1)))
-      |> Enum.uniq()
+  def get_nodes_by_type(node_types, %__MODULE__{} = state) when is_list(node_types) do
+    T.span(:get_nodes_by_type, %{types: node_types}, fn ->
+      case Collection.stats(state.collection) do
+        {:ok, %Stats{doc_count: 0}} ->
+          {{:ok, [], state}, %{count: 0}}
 
-    case Collection.fetch(state.collection, ids) do
-      {:ok, docs} ->
-        nodes = Enum.map(docs, &decode_with_links(&1, state.sidecar))
-        {:ok, nodes, state}
+        {:ok, %Stats{doc_count: doc_count}} ->
+          collect_nodes_by_type(state, node_types, doc_count)
 
-      {:error, err} ->
-        {:error, Errors.translate(err, :get_nodes_by_type)}
+        {:error, err} ->
+          {{:error, Errors.translate(err, :get_nodes_by_type)}, %{}}
+      end
+    end)
+  end
+
+  defp collect_nodes_by_type(state, node_types, doc_count) do
+    placeholder = type_query_placeholder(state.dimension)
+
+    try do
+      nodes =
+        node_types
+        |> Enum.flat_map(&query_by_type!(state, &1, placeholder, doc_count))
+        |> Enum.uniq_by(& &1.pk)
+        |> Enum.map(&decode_result_with_links(&1, state.sidecar))
+
+      {{:ok, nodes, state}, %{count: length(nodes)}}
+    catch
+      {:zvex_error, err} -> {{:error, Errors.translate(err, :get_nodes_by_type)}, %{}}
     end
+  end
+
+  defp query_by_type!(state, type, placeholder, top_k) do
+    filter = "node_type = '#{Schema.node_type_string(type)}'"
+
+    query =
+      Query.new()
+      |> Query.field("embedding")
+      |> Query.vector(placeholder)
+      |> Query.filter(filter)
+      |> Query.top_k(top_k)
+      |> Query.flat()
+      |> Query.output_fields(["payload", "has_embedding"])
+      |> Query.include_vector(true)
+
+    case Query.execute(query, state.collection) do
+      {:ok, results} -> results
+      {:error, err} -> throw({:zvex_error, err})
+    end
+  end
+
+  defp type_query_placeholder(dimension) when dimension > 0 do
+    Vector.from_list([1.0 | List.duplicate(0.0, dimension - 1)], :fp32)
   end
 
   defp upsert_docs(_collection, []), do: :ok
@@ -220,18 +260,6 @@ defmodule MnemosyneZvex.Backend do
     end
   end
 
-  defp index_additions(sidecar, additions) do
-    Enum.reduce_while(additions, :ok, fn node, :ok ->
-      type = NodeProtocol.node_type(node)
-      id = NodeProtocol.id(node)
-
-      case Sidecar.add_to_type_index(sidecar, type, id) do
-        :ok -> {:cont, :ok}
-        {:error, _} = err -> {:halt, err}
-      end
-    end)
-  end
-
   defp decode_with_links(%Zvex.Document{} = doc, sidecar) do
     base = Encoding.decode(doc_to_fields_map(doc))
     links = Sidecar.get_links(sidecar, NodeProtocol.id(base))
@@ -239,6 +267,12 @@ defmodule MnemosyneZvex.Backend do
   end
 
   defp doc_to_fields_map(%Zvex.Document{fields: fields}), do: fields
+
+  defp decode_result_with_links(%Query.Result{pk: pk, fields: fields}, sidecar) do
+    base = Encoding.decode(fields)
+    links = Sidecar.get_links(sidecar, pk)
+    %{base | links: links}
+  end
 
   defp open_or_create_collection(zvex_path, schema) do
     if File.exists?(zvex_path) do

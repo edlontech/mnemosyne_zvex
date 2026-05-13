@@ -1,13 +1,13 @@
 defmodule MnemosyneZvex.Sidecar do
   @moduledoc """
-  DETS-backed store for mutable per-node metadata, typed links between nodes,
-  and a per-type id index used as a fallback for `get_nodes_by_type/2`.
+  DETS-backed store for mutable per-node metadata and typed links between
+  nodes. Lookups by `node_type` go straight to Zvex via a filtered query —
+  no type-index is maintained here.
 
   Records:
 
-      {{:links, node_id},   %{edge_type => MapSet.t(node_id)}}
-      {{:meta,  node_id},   %Mnemosyne.NodeMetadata{}}
-      {{:type_index, type}, MapSet.t(node_id)}
+      {{:links, node_id}, %{edge_type => MapSet.t(node_id)}}
+      {{:meta,  node_id}, %Mnemosyne.NodeMetadata{}}
   """
 
   alias Mnemosyne.Graph.Edge
@@ -111,30 +111,6 @@ defmodule MnemosyneZvex.Sidecar do
     end)
   end
 
-  @doc "Adds a node id to the per-type index."
-  @spec add_to_type_index(t(), atom(), String.t()) :: :ok | {:error, {:dets_error, term()}}
-  def add_to_type_index(%__MODULE__{ref: ref}, type, id) do
-    set =
-      case :dets.lookup(ref, {:type_index, type}) do
-        [{_, s}] -> MapSet.put(s, id)
-        [] -> MapSet.new([id])
-      end
-
-    case :dets.insert(ref, {{:type_index, type}, set}) do
-      :ok -> :ok
-      {:error, reason} -> {:error, {:dets_error, reason}}
-    end
-  end
-
-  @doc "Returns all node ids of the given type from the type index."
-  @spec ids_of_type(t(), atom()) :: MapSet.t()
-  def ids_of_type(%__MODULE__{ref: ref}, type) do
-    case :dets.lookup(ref, {:type_index, type}) do
-      [{_, s}] -> s
-      [] -> MapSet.new()
-    end
-  end
-
   @doc """
   Removes the given ids from all sidecar tables and scrubs back-references
   from every surviving node's link set. Mirrors
@@ -145,9 +121,8 @@ defmodule MnemosyneZvex.Sidecar do
     dead = MapSet.new(ids)
 
     with :ok <- strip_back_refs(ref, dead),
-         :ok <- delete_link_rows(ref, ids),
-         :ok <- delete_meta_rows(ref, ids) do
-      strip_type_indexes(ref, dead)
+         :ok <- delete_link_rows(ref, ids) do
+      delete_meta_rows(ref, ids)
     end
   end
 
@@ -200,25 +175,6 @@ defmodule MnemosyneZvex.Sidecar do
   defp delete_meta_rows(ref, ids) do
     Enum.reduce_while(ids, :ok, fn id, :ok ->
       case :dets.delete(ref, {:meta, id}) do
-        :ok -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, {:dets_error, reason}}}
-      end
-    end)
-  end
-
-  defp strip_type_indexes(ref, dead) do
-    indexes =
-      :dets.foldl(
-        fn
-          {{:type_index, type}, set}, acc -> [{type, MapSet.difference(set, dead)} | acc]
-          _other, acc -> acc
-        end,
-        [],
-        ref
-      )
-
-    Enum.reduce_while(indexes, :ok, fn {type, set}, :ok ->
-      case :dets.insert(ref, {{:type_index, type}, set}) do
         :ok -> {:cont, :ok}
         {:error, reason} -> {:halt, {:error, {:dets_error, reason}}}
       end

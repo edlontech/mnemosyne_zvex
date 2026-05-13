@@ -50,24 +50,11 @@ defmodule MnemosyneZvex.SidecarTest do
     end
   end
 
-  describe "type index" do
-    test "add_to_type_index + ids_of_type", %{side: side} do
-      :ok = Sidecar.add_to_type_index(side, :semantic, "s1")
-      :ok = Sidecar.add_to_type_index(side, :semantic, "s2")
-      :ok = Sidecar.add_to_type_index(side, :tag, "t1")
-
-      assert MapSet.equal?(Sidecar.ids_of_type(side, :semantic), MapSet.new(["s1", "s2"]))
-      assert MapSet.equal?(Sidecar.ids_of_type(side, :tag), MapSet.new(["t1"]))
-    end
-  end
-
   describe "remove_ids" do
-    test "deletes links, metadata, scrubs back-refs, and strips type indexes", %{side: side} do
+    test "deletes links, metadata, and scrubs back-refs", %{side: side} do
       :ok = Sidecar.put_link(side, "a", "b", :sibling)
       :ok = Sidecar.put_link(side, "c", "b", :sibling)
       :ok = Sidecar.put_metadata_many(side, %{"b" => Fixtures.meta()})
-      :ok = Sidecar.add_to_type_index(side, :semantic, "b")
-      :ok = Sidecar.add_to_type_index(side, :semantic, "a")
 
       :ok = Sidecar.remove_ids(side, ["b"])
 
@@ -75,7 +62,6 @@ defmodule MnemosyneZvex.SidecarTest do
       assert %{sibling: a_links} = Sidecar.get_links(side, "a")
       refute MapSet.member?(a_links, "b")
       assert Sidecar.get_metadata_many(side, ["b"]) == %{}
-      assert MapSet.equal?(Sidecar.ids_of_type(side, :semantic), MapSet.new(["a"]))
     end
 
     test "is a no-op on an empty id list", %{side: side} do
