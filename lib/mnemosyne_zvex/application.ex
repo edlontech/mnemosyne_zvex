@@ -1,19 +1,20 @@
 defmodule MnemosyneZvex.Application do
-  # See https://hexdocs.pm/elixir/Application.html
-  # for more information on OTP Applications
   @moduledoc false
 
   use Application
 
   @impl true
   def start(_type, _args) do
-    children = [
-      # Starts a worker by calling: MnemosyneZvex.Worker.start_link(arg)
-      # {MnemosyneZvex.Worker, arg}
-    ] ++ dev_children()
+    :ok = ensure_zvex_initialized()
+
+    children = dev_children()
 
     opts = [strategy: :one_for_one, name: MnemosyneZvex.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  defp ensure_zvex_initialized do
+    if Zvex.initialized?(), do: :ok, else: Zvex.initialize!()
   end
 
   if Mix.env() == :dev do
