@@ -31,7 +31,7 @@ defmodule MnemosyneZvex.Encoding do
       |> Map.put(:links, Edge.empty_links())
       |> Map.put(:embedding, nil)
 
-    # TODO: drop Base64 once Zvex probe-order respects schema type (deps/zvex/.../zig/document.zig probe_types).
+    # Base64 wraps the binary payload so Zvex's probe-order survives non-printable bytes.
     payload = stripped |> :erlang.term_to_binary([:compressed]) |> Base.encode64()
     created_at_ms = node.created_at |> DateTime.to_unix(:millisecond)
 
@@ -61,7 +61,6 @@ defmodule MnemosyneZvex.Encoding do
   """
   @spec decode(map()) :: struct()
   def decode(%{"payload" => {:string, payload}} = fields) when is_binary(payload) do
-    # TODO: drop Base64 once Zvex probe-order respects schema type (deps/zvex/.../zig/document.zig probe_types).
     base = payload |> Base.decode64!() |> :erlang.binary_to_term()
 
     case fields["has_embedding"] do

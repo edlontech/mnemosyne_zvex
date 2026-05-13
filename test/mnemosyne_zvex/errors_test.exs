@@ -5,29 +5,35 @@ defmodule MnemosyneZvex.ErrorsTest do
   alias Mnemosyne.Errors.Framework.NotFoundError
   alias Mnemosyne.Errors.Framework.StorageError
   alias MnemosyneZvex.Errors
+  alias Zvex.Error.Conflict.AlreadyExists
+  alias Zvex.Error.Internal.InternalError
+  alias Zvex.Error.Invalid.Argument
+  alias Zvex.Error.Invalid.FailedPrecondition
+  alias Zvex.Error.NotFound.NotFound, as: ZvexNotFound
+  alias Zvex.Error.Unknown.Unknown
 
   describe "translate/2" do
     test "Invalid.Argument -> StorageError(:invalid_argument)" do
-      err = Zvex.Error.Invalid.Argument.exception(message: "bad")
+      err = Argument.exception(message: "bad")
 
       assert %StorageError{operation: :apply_changeset, reason: {:invalid_argument, "bad"}} =
                Errors.translate(err, :apply_changeset)
     end
 
     test "Invalid.FailedPrecondition -> StorageError(:precondition_failed)" do
-      err = Zvex.Error.Invalid.FailedPrecondition.exception(message: "closed")
+      err = FailedPrecondition.exception(message: "closed")
 
       assert %StorageError{reason: {:precondition_failed, "closed"}} =
                Errors.translate(err, :get_node)
     end
 
     test "NotFound -> NotFoundError(:node, id)" do
-      err = Zvex.Error.NotFound.NotFound.exception(message: "abc")
+      err = ZvexNotFound.exception(message: "abc")
       assert %NotFoundError{resource: :node, id: "abc"} = Errors.translate(err, :get_node)
     end
 
     test "Conflict.AlreadyExists -> StorageError(:already_exists)" do
-      err = Zvex.Error.Conflict.AlreadyExists.exception(message: "dup")
+      err = AlreadyExists.exception(message: "dup")
 
       assert %StorageError{reason: {:already_exists, "dup"}} =
                Errors.translate(err, :apply_changeset)
@@ -48,14 +54,14 @@ defmodule MnemosyneZvex.ErrorsTest do
     end
 
     test "Internal.InternalError -> AdapterError(:internal)" do
-      err = Zvex.Error.Internal.InternalError.exception(message: "boom")
+      err = InternalError.exception(message: "boom")
 
       assert %AdapterError{reason: {:internal, "boom"}} =
                Errors.translate(err, :delete_nodes)
     end
 
     test "Unknown.Unknown -> AdapterError(:unknown)" do
-      err = Zvex.Error.Unknown.Unknown.exception(message: "?")
+      err = Unknown.exception(message: "?")
       assert %AdapterError{reason: {:unknown, "?"}} = Errors.translate(err, :init)
     end
 

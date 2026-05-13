@@ -14,6 +14,7 @@ defmodule MnemosyneZvex.Recall do
 
   @type scored_node :: {struct(), float()}
 
+  @doc false
   @spec find_candidates(
           [atom()],
           [float()],

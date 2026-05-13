@@ -3,6 +3,7 @@ defmodule MnemosyneZvex.Telemetry do
 
   @prefix [:mnemosyne_zvex]
 
+  @doc false
   @spec span(atom() | [atom()], map(), (-> {result, map()})) :: result when result: var
   def span(event, metadata, fun) do
     name = @prefix ++ List.wrap(event)
