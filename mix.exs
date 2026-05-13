@@ -5,8 +5,13 @@ defmodule MnemosyneZvex.MixProject do
     [
       app: :mnemosyne_zvex,
       version: "0.1.0",
+      description: description(),
+      package: package(),
       elixir: "~> 1.19",
       test_coverage: [tool: ExCoveralls],
+      dialyzer: [
+        plt_core_path: "_plts/core"
+      ],
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -61,7 +66,19 @@ defmodule MnemosyneZvex.MixProject do
       {:splode, "~> 0.3"},
       {:telemetry, "~> 1.3"},
       {:tidewave, "~> 0.5", only: :dev, runtime: false},
-      {:zvex, github: "edlontech/zvex", branch: "main"}
+      {:zvex, "~> 0.4"}
+    ]
+  end
+
+  defp description() do
+    "A Mnemosyne Backend using Zvec as Vector-Storage"
+  end
+
+  defp package() do
+    [
+      licenses: ["MIT"],
+      links: %{"GitHub" => "https://github.com/edlontech/mnemosyne_zvex"},
+      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end
 end

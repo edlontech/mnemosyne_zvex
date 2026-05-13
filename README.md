@@ -9,7 +9,7 @@ a DETS sidecar for typed links and mutable per-node metadata.
 ```elixir
 def deps do
   [
-    {:mnemosyne_zvex, "~> 0.1.0"}
+    {:mnemosyne_zvex, "~> 0.1.0"} # x-release-please-version
   ]
 end
 ```
